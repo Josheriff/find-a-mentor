@@ -1,26 +1,17 @@
 import React from 'react';
 import Obfuscate from 'react-obfuscate';
-import { orderBy } from 'lodash';
+import orderBy from 'lodash/orderBy';
 import './Card.css';
 import { getChannelInfo } from '../../channelProvider';
 import classNames from 'classnames';
-
-const generateMentorId = name => {
-  return name.replace(/\s/g, '-');
-};
+import { report } from '../../ga';
+import auth from '../../utils/auth';
+import { Tooltip } from 'react-tippy';
+import messages from '../../messages';
+import { useFilters } from '../../context/filtersContext/FiltersContext';
 
 function handleAnalytic(channelName) {
-  if (window && window.ga) {
-    const { ga } = window;
-
-    ga('send', {
-      hitType: 'event',
-      eventCategory: 'Channel',
-      eventAction: 'click',
-      eventLabel: channelName,
-      transport: 'beacon',
-    });
-  }
+  report('Channel', 'click', channelName);
 }
 
 const tagsList = (tags, handleTagClick) =>
@@ -37,7 +28,28 @@ const tagsList = (tags, handleTagClick) =>
     );
   });
 
+const applyOnClick = () => {
+  handleAnalytic('apply');
+  auth.login();
+};
+
+const nonLoggedinChannels = () => {
+  return (
+    <Tooltip title={messages.CARD_APPLY_TOOLTIP} size="big" arrow={true}>
+      <button onClick={applyOnClick}>
+        <div className="icon">
+          <i className="fa fa-hand-o-right fa-lg" />
+        </div>
+        <p className="type">Apply</p>
+      </button>
+    </Tooltip>
+  );
+};
+
 const channelsList = channels => {
+  if (!auth.isAuthenticated()) {
+    return nonLoggedinChannels();
+  }
   const orderedChannels = orderBy(channels, ['type'], ['asc']);
   return orderedChannels.map(channel => {
     const { icon, url } = getChannelInfo(channel);
@@ -75,16 +87,17 @@ const channelsList = channels => {
   });
 };
 
-const Avatar = ({ mentor }) => {
+const Avatar = ({ mentor, id, handleAvatarClick }) => {
   return (
-    <div className="avatar">
+    <button className="avatar" onClick={handleAvatarClick}>
       <i className="fa fa-user-circle" />
       <img
         src={mentor.avatar}
-        aria-labelledby={`${generateMentorId(mentor.name)}-name`}
-        alt=""
+        aria-labelledby={`${id}`}
+        alt={`${mentor.name}`}
+        onError={e => e.currentTarget.classList.add('broken')}
       />
-    </div>
+    </button>
   );
 };
 
@@ -99,10 +112,21 @@ const LikeButton = ({ onClick, liked }) => (
   </button>
 );
 
-const Card = ({ mentor, onFavMentor, isFav, handleTagClick }) => {
+const Card = ({ mentor, onFavMentor, isFav }) => {
+  const [, dispatch] = useFilters();
   const toggleFav = () => {
     isFav = !isFav;
     onFavMentor(mentor);
+  };
+
+  const handleTagClick = tag => {
+    dispatch({ type: 'filterTag', payload: tag });
+  };
+  const handleAvatarClick = name => {
+    dispatch({ type: 'filterName', payload: name });
+  };
+  const handleCountryClick = country => {
+    dispatch({ type: 'filterCountry', payload: country });
   };
 
   // don't show the description if it's not provided
@@ -116,9 +140,9 @@ const Card = ({ mentor, onFavMentor, isFav, handleTagClick }) => {
     return (
       <>
         <div>
-          <h1 className="name" id={`${generateMentorId(mentor.name)}-name`}>
+          <h2 className="name" id={`${mentor._id}`}>
             {mentor.name}
-          </h1>
+          </h2>
           <h4 className="title">{mentor.title}</h4>
           {description}
         </div>
@@ -144,18 +168,25 @@ const Card = ({ mentor, onFavMentor, isFav, handleTagClick }) => {
   const CardHeader = () => {
     return (
       <div className="header">
-        <div className="country location">
+        <button
+          className="country location"
+          onClick={() => handleCountryClick(mentor.country)}
+        >
           <i className={'fa fa-map-marker'} />
           <p>{mentor.country}</p>
-        </div>
+        </button>
 
-        <Avatar mentor={mentor} />
+        <Avatar
+          mentor={mentor}
+          id={mentor._id}
+          handleAvatarClick={handleAvatarClick.bind(null, mentor.name)}
+        />
         <LikeButton onClick={toggleFav} liked={isFav} />
       </div>
     );
   };
   return (
-    <div className="card" aria-label="Mentor card">
+    <div className="card" aria-label="Mentor card" data-testid="mentor-card">
       <CardHeader />
       <MentorInfo />
       <SkillsTags />
